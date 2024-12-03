@@ -119,8 +119,28 @@ class MeshDrawer {
     this.specularIntensity = 0.5; // Default specular intensity
     this.shininess = 32.0; // Default shininess
 
+    this.diffuseTexLoc = gl.getUniformLocation(this.prog, "diffuseTex");
+    this.normalTexLoc = gl.getUniformLocation(this.prog, "normalTex");
+    this.useNormalMapLoc = gl.getUniformLocation(this.prog, "useNormalMap");
+
+    // Create textures
+    this.diffuseTexture = gl.createTexture();
+    this.normalTexture = gl.createTexture();
+    this.hasNormalMap = false;
+
+    this.textureBlendLoc = gl.getUniformLocation(this.prog, "textureBlend");
+    this.blendFactorLoc = gl.getUniformLocation(this.prog, "blendFactor");
+    this.blendFactor = 0.5; // Default blend factor
 
   }
+
+
+  setBlendFactor(factor) {
+    this.blendFactor = factor;
+    gl.useProgram(this.prog);
+    gl.uniform1f(this.blendFactorLoc, this.blendFactor);
+    DrawScene();
+}
 
   setMesh(vertPos, texCoords, normalCoords) {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
@@ -145,68 +165,91 @@ class MeshDrawer {
   draw(trans) {
     gl.useProgram(this.prog);
 
+    // Set MVP matrix
     gl.uniformMatrix4fv(this.mvpLoc, false, trans);
 
-    // Vertex position setup
+    // Set up vertex positions
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
     gl.enableVertexAttribArray(this.vertPosLoc);
     gl.vertexAttribPointer(this.vertPosLoc, 3, gl.FLOAT, false, 0, 0);
 
-    // Texture coordinate setup
+    // Set up texture coordinates
     gl.bindBuffer(gl.ARRAY_BUFFER, this.texbuffer);
     gl.enableVertexAttribArray(this.texCoordLoc);
     gl.vertexAttribPointer(this.texCoordLoc, 2, gl.FLOAT, false, 0, 0);
 
-    // Task 2: Normal coordinate setup
+    // Set up normals
     gl.bindBuffer(gl.ARRAY_BUFFER, this.normalbuffer);
     gl.enableVertexAttribArray(this.normalLoc);
     gl.vertexAttribPointer(this.normalLoc, 3, gl.FLOAT, false, 0, 0);
 
-    // Update light position
+    // Update and set light position
     updateLightPos();
-
-    // Set lighting uniforms
     gl.uniform3f(this.lightPosLoc, lightX, lightY, 1.0);
+
+    // Set lighting parameters
     gl.uniform1f(this.ambientLoc, this.ambientIntensity);
     gl.uniform1i(this.enableLightingLoc, this.enableLightingFlag);
-
     gl.uniform1f(this.specularLoc, this.specularIntensity);
     gl.uniform1f(this.shininessLoc, this.shininess);
 
+    gl.uniform1f(this.blendFactorLoc, this.blendFactor);
+
+    // Bind diffuse (base) texture to texture unit 0
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.diffuseTexture);
+    gl.uniform1i(this.diffuseTexLoc, 0);
+
+    // Bind normal map to texture unit 1 if available
+    if (this.hasNormalMap) {
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.normalTexture);
+        gl.uniform1i(this.normalTexLoc, 1);
+    }
+    gl.uniform1i(this.useNormalMapLoc, this.hasNormalMap);
+
+    gl.uniform1i(this.showTexLoc, true);
+
+    // Draw the triangles
     gl.drawArrays(gl.TRIANGLES, 0, this.numTriangles);
+
+    // Clean up
+    gl.disableVertexAttribArray(this.vertPosLoc);
+    gl.disableVertexAttribArray(this.texCoordLoc);
+    gl.disableVertexAttribArray(this.normalLoc);
 }
 
   // This method is called to set the texture of the mesh.
   // The argument is an HTML IMG element containing the texture data.
-  setTexture(img) {
-    const texture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, texture);
 
-    // You can set the texture image data using the following command.
+  setTexture(img, isNormalMap = false) {
+    const texture = isNormalMap ? this.normalTexture : this.diffuseTexture;
+    gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img);
 
-    // Set texture parameters
     if (isPowerOf2(img.width) && isPowerOf2(img.height)) {
-      gl.generateMipmap(gl.TEXTURE_2D);
-      gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_MIN_FILTER,
-        gl.LINEAR_MIPMAP_LINEAR
-      );
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     } else {
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     }
 
     gl.useProgram(this.prog);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    const sampler = gl.getUniformLocation(this.prog, "tex");
-    gl.uniform1i(sampler, 0);
-  }
 
+    if (isNormalMap) {
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.normalTexture);
+        gl.uniform1i(this.normalTexLoc, 1);
+        this.hasNormalMap = true;
+    } else {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.diffuseTexture);
+        gl.uniform1i(this.diffuseTexLoc, 0);
+    }
+}
   showTexture(show) {
     gl.useProgram(this.prog);
     gl.uniform1i(this.showTexLoc, show);
@@ -246,22 +289,29 @@ function normalize(v, dst) {
 
 // Vertex shader source code
 const meshVS = `
-			attribute vec3 pos; 
-			attribute vec2 texCoord; 
-			attribute vec3 normal;
+    attribute vec3 pos;
+    attribute vec2 texCoord;
+    attribute vec3 normal;
 
-			uniform mat4 mvp; 
+    uniform mat4 mvp;
 
-			varying vec2 v_texCoord; 
-			varying vec3 v_normal; 
+    varying vec2 v_texCoord;
+    varying vec3 v_normal;
+    varying mat3 v_TBN;
 
-			void main()
-			{
-				v_texCoord = texCoord;
-				v_normal = normal;
+    void main() {
+        v_texCoord = texCoord;
+        v_normal = normal;
 
-				gl_Position = mvp * vec4(pos,1);
-			}`;
+        // Calculate tangent space basis vectors
+        vec3 T = normalize(vec3(1.0, 0.0, 0.0));
+        vec3 N = normalize(normal);
+        vec3 B = normalize(cross(N, T));
+        T = normalize(cross(B, N));
+        v_TBN = mat3(T, B, N);
+
+        gl_Position = mvp * vec4(pos, 1);
+    }`;
 
 // Fragment shader source code
 /**
@@ -272,47 +322,53 @@ const meshFS = `
 
     uniform bool showTex;
     uniform bool enableLighting;
-    uniform sampler2D tex;
-    uniform vec3 color; 
+    uniform sampler2D diffuseTex;
+    uniform sampler2D normalTex;
+    uniform bool useNormalMap;
+    uniform vec3 color;
     uniform vec3 lightPos;
     uniform float ambient;
     uniform float specularIntensity;
     uniform float shininess;
+    uniform float blendFactor;
 
     varying vec2 v_texCoord;
     varying vec3 v_normal;
-    varying vec3 v_fragPos;
 
-    void main()
-    {
-        vec4 texColor = texture2D(tex, v_texCoord);
+    void main() {
+        // Get both texture colors
+        vec4 baseColor = texture2D(diffuseTex, v_texCoord);
+        vec4 normalColor = texture2D(normalTex, v_texCoord);
         
-        if(showTex && enableLighting){
-            // Ambient light
-            vec3 ambientColor = texColor.rgb * ambient;
-            
-            // Diffuse lighting
-            vec3 norm = normalize(v_normal);
+        // Blend the textures
+        vec4 blendedColor = mix(baseColor, normalColor, blendFactor);
+
+        if(showTex && enableLighting) {
+            // Normalize vectors for lighting calculations
+            vec3 normal = normalize(v_normal);
             vec3 lightDir = normalize(lightPos - vec3(0.0, 0.0, 0.0));
-            float diffuse = max(dot(norm, lightDir), 0.0);
-            vec3 diffuseColor = texColor.rgb * diffuse;
             
-            // Specular lighting (Phong reflection model)
-            vec3 viewDir = normalize(vec3(0.0, 0.0, 1.0)); // Simplified view direction
-            vec3 reflectDir = reflect(-lightDir, norm);
+            // Ambient component
+            vec3 ambientColor = blendedColor.rgb * ambient;
             
+            // Diffuse component
+            float diff = max(dot(normal, lightDir), 0.0);
+            vec3 diffuseColor = blendedColor.rgb * diff;
+            
+            // Specular component
+            vec3 viewDir = normalize(vec3(0.0, 0.0, 1.0));
+            vec3 reflectDir = reflect(-lightDir, normal);
             float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
             vec3 specularColor = vec3(1.0) * spec * specularIntensity;
             
-            // Combine lighting components
-            vec3 finalColor = ambientColor + diffuseColor + specularColor;
-            
-            gl_FragColor = vec4(finalColor, texColor.a);
+            // Combine all lighting components
+            vec3 result = ambientColor + diffuseColor + specularColor;
+            gl_FragColor = vec4(result, blendedColor.a);
         }
-        else if(showTex){
-            gl_FragColor = texColor;
+        else if(showTex) {
+            gl_FragColor = blendedColor;
         }
-        else{
+        else {
             gl_FragColor = vec4(1.0, 0, 0, 1.0);
         }
     }`;

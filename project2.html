@@ -342,7 +342,25 @@ function LoadTexture( param )
 	meshDrawer.showTexture( true );
 	DrawScene();
 }
-
+function LoadNormalMap(param) {
+    if (param.files && param.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var img = new Image();
+            img.src = e.target.result;
+            img.onload = function() {
+                meshDrawer.setTexture(img, true); // true indicates this is a normal map
+                DrawScene();
+            }
+        };
+        reader.readAsDataURL(param.files[0]);
+    }
+}
+function SetTextureBlend(value) {
+    // Convert range input (0-100) to blend factor (0-1)
+    let factor = value / 100;
+    meshDrawer.setBlendFactor(factor);
+}
 ///////////////////////////////////////////////////////////////////////////////////
 </script>
 
@@ -447,6 +465,13 @@ canvas {
 <div class="control">OBJ model:<br/><input id="obj" type="file" onchange="LoadObj(this)" accept=".obj"/></div>
 <div class="control">Texture image:<br/><input id="texture" type="file" onchange="LoadTexture(this)" accept="image/*"/></div>
 <div class="control">Second Texture image:<br/><input id="texture2" type="file" onchange="LoadTexture2(this)" accept="image/*"/></div>
+<div class="control">Base texture image:<br/><input id="texture" type="file" onchange="LoadTexture(this)" accept="image/*"/></div>
+<div class="control">Normal map image:<br/><input id="normalMap" type="file" onchange="LoadNormalMap(this)" accept="image/*"/></div>
+<div class="control">Texture Blend:<br/>
+	<input type="range" id="blend-control" 
+		   min="0" max="100" value="50" 
+		   onchange="SetTextureBlend(this.value)"/>
+</div>
 </div>
 
 <div class="control-group">
