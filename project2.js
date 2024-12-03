@@ -110,6 +110,16 @@ class MeshDrawer {
     // Default lighting settings
     this.enableLightingFlag = false;
     this.ambientIntensity = 0.5; // Default ambient light
+
+    //TASK 3
+    this.specularLoc = gl.getUniformLocation(this.prog, "specularIntensity");
+    this.shininessLoc = gl.getUniformLocation(this.prog, "shininess");
+
+    // Default specular settings
+    this.specularIntensity = 0.5; // Default specular intensity
+    this.shininess = 32.0; // Default shininess
+
+
   }
 
   setMesh(vertPos, texCoords, normalCoords) {
@@ -160,6 +170,9 @@ class MeshDrawer {
     gl.uniform1f(this.ambientLoc, this.ambientIntensity);
     gl.uniform1i(this.enableLightingLoc, this.enableLightingFlag);
 
+    gl.uniform1f(this.specularLoc, this.specularIntensity);
+    gl.uniform1f(this.shininessLoc, this.shininess);
+
     gl.drawArrays(gl.TRIANGLES, 0, this.numTriangles);
 }
 
@@ -206,6 +219,11 @@ class MeshDrawer {
 
 setAmbientLight(ambient) {
   this.ambientIntensity = ambient;
+  DrawScene(); // Redraw the scene
+}
+
+setSpecularLight(intensity) {
+  this.specularIntensity = intensity; // Convert slider value to 0-1 range
   DrawScene(); // Redraw the scene
 }
 }
@@ -258,24 +276,38 @@ const meshFS = `
     uniform vec3 color; 
     uniform vec3 lightPos;
     uniform float ambient;
+    uniform float specularIntensity;
+    uniform float shininess;
 
     varying vec2 v_texCoord;
     varying vec3 v_normal;
+    varying vec3 v_fragPos;
 
     void main()
     {
         vec4 texColor = texture2D(tex, v_texCoord);
         
         if(showTex && enableLighting){
-            // Basic diffuse lighting calculation
-            vec3 lightDirection = normalize(lightPos - vec3(0.0, 0.0, 0.0));
-            float diffuse = max(dot(normalize(v_normal), lightDirection), 0.0);
+            // Ambient light
+            vec3 ambientColor = texColor.rgb * ambient;
             
-            // Combine ambient and diffuse lighting
-            vec3 lighting = vec3(ambient + diffuse);
+            // Diffuse lighting
+            vec3 norm = normalize(v_normal);
+            vec3 lightDir = normalize(lightPos - vec3(0.0, 0.0, 0.0));
+            float diffuse = max(dot(norm, lightDir), 0.0);
+            vec3 diffuseColor = texColor.rgb * diffuse;
             
-            // Apply lighting to texture color
-            gl_FragColor = vec4(texColor.rgb * lighting, texColor.a);
+            // Specular lighting (Phong reflection model)
+            vec3 viewDir = normalize(vec3(0.0, 0.0, 1.0)); // Simplified view direction
+            vec3 reflectDir = reflect(-lightDir, norm);
+            
+            float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
+            vec3 specularColor = vec3(1.0) * spec * specularIntensity;
+            
+            // Combine lighting components
+            vec3 finalColor = ambientColor + diffuseColor + specularColor;
+            
+            gl_FragColor = vec4(finalColor, texColor.a);
         }
         else if(showTex){
             gl_FragColor = texColor;
